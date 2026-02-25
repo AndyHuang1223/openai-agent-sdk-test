@@ -14,7 +14,12 @@ npm install
 cp .env.example .env
 ```
 
-接著把 `.env` 裡的 `OPENAI_API_KEY` 改成你的金鑰。
+接著把 `.env` 裡的 `OPENAI_API_KEY` 改成你的金鑰，並設定 `MS_LEARN_MCP_URL`：
+
+```dotenv
+OPENAI_API_KEY=your_openai_api_key_here
+MS_LEARN_MCP_URL=https://your-ms-learn-mcp-endpoint.example.com
+```
 
 ## 3) 執行範例
 
@@ -30,6 +35,17 @@ http://localhost:3000
 
 在 UI 中輸入訊息後，agent 回覆會以串流方式逐步顯示。
 
+可先用健康檢查端點確認設定是否生效：
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+你會看到：
+
+- `openAiApiKeyConfigured`：`OPENAI_API_KEY` 是否已設定
+- `msLearnMcpConfigured`：`MS_LEARN_MCP_URL` 是否已設定並啟用
+
 ## 程式入口
 
 - `src/index.ts`：Node.js Web 伺服器與 `/api/chat` 串流端點
@@ -41,6 +57,23 @@ http://localhost:3000
 
 - `instructions`：agent 角色設定
 - `model`：模型選擇
+
+## MS Learn MCP 與 C# 路由
+
+此專案已支援在「C#/.NET 相關問題」時切換到含 MS Learn MCP 的 agent。
+
+- MCP 連線型態：Streamable HTTP（讀取 `MS_LEARN_MCP_URL`）
+- 路由方式：後端關鍵字判斷（例如 `c#`、`.net`、`linq`、`asp.net`）
+- 行為限制：非 C# 問題不使用 MS Learn MCP
+- 回答要求：C# 問題回覆末尾固定附「來源區塊」
+  - 有來源時：
+    - `【來源】`
+    - `- MS Learn: <https://learn.microsoft.com/...>`
+  - 無來源時：
+    - `【來源】`
+    - `- 無（本次未使用 MS Learn MCP）`
+- 後端保險：若模型回覆缺少 `【來源】`，伺服器會在串流尾端自動補上「無來源」區塊
+- 容錯降級：若 MCP 不可用或 C# MCP agent 請求失敗，會自動改用不含 MCP 的 C# fallback agent；若 fallback 也失敗才改用一般 agent（不中斷 API）
 
 ## Session Memory 運作說明（對照程式碼）
 

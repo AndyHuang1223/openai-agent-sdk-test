@@ -105,10 +105,31 @@ h1 {
   position: relative;
 }
 
-.msg.agent .copy-code-btn {
+.msg.agent .code-block-meta {
   position: absolute;
   top: 6px;
+  left: 8px;
   right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.msg.agent .code-language-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #374151;
+  color: #e5e7eb;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.msg.agent .copy-code-btn {
+  position: relative;
   height: 28px;
   padding: 0 10px;
   border: 1px solid #374151;
@@ -117,6 +138,7 @@ h1 {
   color: #f9fafb;
   font-size: 12px;
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .msg.agent .copy-code-btn:hover {
@@ -136,6 +158,12 @@ h1 {
   background: transparent;
   padding: 0;
   color: inherit;
+}
+
+.msg.agent pre code.hljs {
+  display: block;
+  background: transparent;
+  padding: 0;
 }
 
 .msg.agent a {
@@ -184,4 +212,36 @@ h1 {
 #clear-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%) translateY(10px);
+  opacity: 0;
+  pointer-events: none;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  z-index: 1000;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.toast.success {
+  background: #111827;
+  color: #f9fafb;
+}
+
+.toast.error {
+  background: #7f1d1d;
+  color: #fee2e2;
 }

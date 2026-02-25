@@ -20,6 +20,108 @@ function escapeHtml(text) {
     .replaceAll("'", "&#39;");
 }
 
+function normalizeLanguageToken(token) {
+  const normalized = token.trim().toLowerCase();
+  const aliases = {
+    csharp: "csharp",
+    "c#": "csharp",
+    cpp: "cpp",
+    "c++": "cpp",
+    js: "javascript",
+    ts: "typescript",
+    py: "python",
+    sh: "bash",
+    shell: "bash",
+    zsh: "bash",
+  };
+
+  return aliases[normalized] ?? normalized;
+}
+
+function toLanguageClass(language) {
+  if (!language) {
+    return "";
+  }
+
+  const safeLanguage = language.replace(/[^a-z0-9-]/g, "");
+  if (!safeLanguage) {
+    return "";
+  }
+
+  return ` class="language-${safeLanguage}"`;
+}
+
+function getLanguageLabel(language) {
+  if (!language) {
+    return "純文字";
+  }
+
+  const labels = {
+    csharp: "C#",
+    cpp: "C++",
+    javascript: "JavaScript",
+    typescript: "TypeScript",
+    python: "Python",
+    bash: "Bash",
+    json: "JSON",
+    html: "HTML",
+    css: "CSS",
+    sql: "SQL",
+    yaml: "YAML",
+    xml: "XML",
+  };
+
+  return labels[language] ?? language.toUpperCase();
+}
+
+function renderCodeBlock(codeText, language) {
+  const languageClass = toLanguageClass(language);
+  const languageLabel = escapeHtml(getLanguageLabel(language));
+
+  return `<div class="code-block"><div class="code-block-meta"><span class="code-language-badge">${languageLabel}</span><button type="button" class="copy-code-btn">複製</button></div><pre><code${languageClass}>${escapeHtml(codeText)}</code></pre></div>`;
+}
+
+function highlightCodeBlocks(container) {
+  const highlighter = window.hljs;
+  if (!highlighter || typeof highlighter.highlightElement !== "function") {
+    return;
+  }
+
+  container.querySelectorAll("pre code").forEach((codeElement) => {
+    highlighter.highlightElement(codeElement);
+  });
+}
+
+let toastTimer = null;
+let toastEl = null;
+
+function ensureToastElement() {
+  if (toastEl) {
+    return toastEl;
+  }
+
+  toastEl = document.createElement("div");
+  toastEl.className = "toast";
+  toastEl.setAttribute("role", "status");
+  toastEl.setAttribute("aria-live", "polite");
+  document.body.appendChild(toastEl);
+  return toastEl;
+}
+
+function showToast(message, variant = "success") {
+  const element = ensureToastElement();
+  element.textContent = message;
+  element.className = `toast show ${variant}`;
+
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+  }
+
+  toastTimer = setTimeout(() => {
+    element.className = "toast";
+  }, 1500);
+}
+
 function renderInlineMarkdown(text) {
   let html = escapeHtml(text);
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -38,6 +140,8 @@ function renderMarkdown(markdownText) {
   let inCodeBlock = false;
   let codeBuffer = [];
   let codeLanguage = "";
+  let fenceChar = "`";
+  let fenceLength = 3;
   let inUnorderedList = false;
   let inOrderedList = false;
 
@@ -53,29 +157,34 @@ function renderMarkdown(markdownText) {
   }
 
   for (const line of lines) {
-    const fencedCode = line.match(/^```\s*(\w+)?\s*$/);
-    if (fencedCode) {
-      closeLists();
-      if (!inCodeBlock) {
-        inCodeBlock = true;
-        codeLanguage = fencedCode[1] ?? "";
-        codeBuffer = [];
-      } else {
-        const languageClass = codeLanguage
-          ? ` class="language-${escapeHtml(codeLanguage)}"`
-          : "";
-        htmlParts.push(
-          `<div class="code-block"><button type="button" class="copy-code-btn">複製</button><pre><code${languageClass}>${escapeHtml(codeBuffer.join("\n"))}</code></pre></div>`,
-        );
+    if (inCodeBlock) {
+      const closingFencePattern = new RegExp(
+        `^\\s*${fenceChar}{${fenceLength},}\\s*$`,
+      );
+      if (closingFencePattern.test(line)) {
+        htmlParts.push(renderCodeBlock(codeBuffer.join("\n"), codeLanguage));
         inCodeBlock = false;
         codeBuffer = [];
         codeLanguage = "";
+        fenceChar = "`";
+        fenceLength = 3;
+        continue;
       }
+
+      codeBuffer.push(line);
       continue;
     }
 
-    if (inCodeBlock) {
-      codeBuffer.push(line);
+    const openingFence = line.match(/^\s*([`~]{3,})(?:\s*([^\s`~]+))?.*$/);
+    if (openingFence) {
+      closeLists();
+      inCodeBlock = true;
+      fenceChar = openingFence[1][0];
+      fenceLength = openingFence[1].length;
+      codeLanguage = openingFence[2]
+        ? normalizeLanguageToken(openingFence[2])
+        : "";
+      codeBuffer = [];
       continue;
     }
 
@@ -133,12 +242,7 @@ function renderMarkdown(markdownText) {
   }
 
   if (inCodeBlock) {
-    const languageClass = codeLanguage
-      ? ` class="language-${escapeHtml(codeLanguage)}"`
-      : "";
-    htmlParts.push(
-      `<div class="code-block"><button type="button" class="copy-code-btn">複製</button><pre><code${languageClass}>${escapeHtml(codeBuffer.join("\n"))}</code></pre></div>`,
-    );
+    htmlParts.push(renderCodeBlock(codeBuffer.join("\n"), codeLanguage));
   }
 
   closeLists();
@@ -148,6 +252,7 @@ function renderMarkdown(markdownText) {
 function setMessageContent(node, role, text) {
   if (role === "agent") {
     node.innerHTML = renderMarkdown(text);
+    highlightCodeBlocks(node);
     return;
   }
   node.textContent = text;
@@ -181,11 +286,18 @@ messagesEl.addEventListener("click", async (event) => {
     return;
   }
 
-  const codeElement = button.parentElement?.querySelector("pre code");
-  const codeText = codeElement?.textContent ?? "";
+  const codeBlock = button.closest(".code-block");
+  const preElement = codeBlock?.querySelector("pre");
+  const codeElement = codeBlock?.querySelector("pre code");
+  const codeText =
+    preElement?.innerText ??
+    preElement?.textContent ??
+    codeElement?.textContent ??
+    "";
 
-  if (!codeText) {
+  if (!codeText.trim()) {
     button.textContent = "無內容";
+    showToast("這個區塊沒有可複製內容", "error");
     setTimeout(() => {
       button.textContent = "複製";
     }, 1200);
@@ -195,8 +307,10 @@ messagesEl.addEventListener("click", async (event) => {
   try {
     await copyTextToClipboard(codeText);
     button.textContent = "已複製";
+    showToast("已複製程式碼", "success");
   } catch {
     button.textContent = "失敗";
+    showToast("複製失敗，請再試一次", "error");
   }
 
   setTimeout(() => {

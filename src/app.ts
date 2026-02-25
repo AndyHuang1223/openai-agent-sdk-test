@@ -4,12 +4,15 @@ import express, {
   type Response,
 } from "express";
 import { join } from "node:path";
+import { loadChatConfig } from "./config/loadChatConfig.js";
 import { createApiRouter } from "./routes/api.js";
 import { ChatService } from "./services/chatService.js";
 
 const PUBLIC_DIR = join(process.cwd(), "public");
 
-export function createApp(chatService = new ChatService()) {
+export function createApp(chatService?: ChatService) {
+  const selectedChatService =
+    chatService ?? new ChatService({ config: loadChatConfig() });
   const app = express();
 
   app.use((request, response, next) => {
@@ -23,7 +26,7 @@ export function createApp(chatService = new ChatService()) {
   });
 
   app.use(express.json());
-  app.use("/api", createApiRouter(chatService));
+  app.use("/api", createApiRouter(selectedChatService));
 
   app.use(express.static(PUBLIC_DIR));
 

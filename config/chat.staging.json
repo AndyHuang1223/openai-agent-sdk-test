@@ -1,0 +1,48 @@
+{
+  "serviceName": "openai-agent-sdk-test-staging",
+  "agents": {
+    "general": {
+      "name": "Tutor",
+      "model": "gpt-4.1-mini",
+      "instructions": "你是一位親切的程式導師。請用繁體中文回答，並用初學者容易懂的方式解釋。"
+    },
+    "csharp": {
+      "name": "CSharpTutor",
+      "model": "gpt-4.1-mini",
+      "instructionsWithMcp": "你是一位親切的 C# 與 .NET 導師。請用繁體中文回答，並用初學者容易懂的方式解釋。若問題與 C#/.NET 相關，優先使用 MS Learn MCP 工具查證內容。",
+      "instructionsWithoutMcp": "你是一位親切的 C# 與 .NET 導師。請用繁體中文回答，並用初學者容易懂的方式解釋。若目前無法取得 MS Learn MCP 工具，請誠實告知無法引用官方來源連結。"
+    },
+    "csharpFallback": {
+      "name": "CSharpTutorFallback",
+      "model": "gpt-4.1-mini",
+      "instructions": "你是一位親切的 C# 與 .NET 導師。請用繁體中文回答，並用初學者容易懂的方式解釋。本次請不要呼叫任何 MCP 工具，直接根據既有知識提供答案。"
+    }
+  },
+  "mcp": {
+    "msLearnUrl": ""
+  },
+  "routing": {
+    "enableCsharpRoute": true,
+    "csharpOnlyUsesMcp": true
+  },
+  "csharpKeywords": [
+    "c#",
+    "c sharp",
+    ".net",
+    "dotnet",
+    "asp.net",
+    "aspnet",
+    "blazor",
+    "linq",
+    "entity framework",
+    "ef core",
+    "xunit",
+    "nunit",
+    "c# 12",
+    "c# 13"
+  ],
+  "sourceBlock": {
+    "rule": "回覆最後必須固定附上以下格式的來源區塊：\n【來源】\n- MS Learn: <https://learn.microsoft.com/...>\n若本次無法取得 MS Learn 來源，請改為：\n【來源】\n- 無（本次未使用 MS Learn MCP）",
+    "fallback": "\n\n【來源】\n- 無（本次未使用 MS Learn MCP）"
+  }
+}

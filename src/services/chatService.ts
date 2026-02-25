@@ -1,4 +1,10 @@
 import { Agent, MCPServerStreamableHttp, run } from "@openai/agents";
+import {
+  type ChatConfig,
+  type DeepPartial,
+  mergeChatConfig,
+} from "../config/chatConfig.js";
+import { loadChatConfig } from "../config/loadChatConfig.js";
 
 type RunResult = {
   toTextStream: (options: {
@@ -23,32 +29,13 @@ type FallbackReason =
   | "mcp-run-failed"
   | "csharp-fallback-failed";
 
-const MS_LEARN_MCP_URL = process.env.MS_LEARN_MCP_URL?.trim() ?? "";
-
-const CSHARP_KEYWORDS = [
-  "c#",
-  "c sharp",
-  ".net",
-  "dotnet",
-  "asp.net",
-  "aspnet",
-  "blazor",
-  "linq",
-  "entity framework",
-  "ef core",
-  "xunit",
-  "nunit",
-  "c# 12",
-  "c# 13",
-] as const;
-
-const CSHARP_SOURCE_BLOCK_RULE =
-  "回覆最後必須固定附上以下格式的來源區塊：\n【來源】\n- MS Learn: <https://learn.microsoft.com/...>\n若本次無法取得 MS Learn 來源，請改為：\n【來源】\n- 無（本次未使用 MS Learn MCP）";
-
-const CSHARP_FALLBACK_SOURCE_BLOCK =
-  "\n\n【來源】\n- 無（本次未使用 MS Learn MCP）";
+function appendSourceRule(instructions: string, sourceRule: string): string {
+  return `${instructions}${sourceRule}`;
+}
 
 export class ChatService {
+  private readonly config: ChatConfig;
+
   private readonly msLearnMcpServer: MCPServerStreamableHttp | null;
 
   private readonly hasMsLearnMcp: boolean;
@@ -59,40 +46,57 @@ export class ChatService {
 
   private readonly previousResponseBySession = new Map<string, string>();
 
-  private readonly generalAgent = new Agent({
-    name: "Tutor",
-    instructions:
-      "你是一位親切的程式導師。請用繁體中文回答，並用初學者容易懂的方式解釋。",
-    model: "gpt-4.1-mini",
-  });
+  private readonly generalAgent: Agent;
 
   private readonly csharpAgent: Agent;
 
-  private readonly csharpFallbackAgent = new Agent({
-    name: "CSharpTutorFallback",
-    instructions: `你是一位親切的 C# 與 .NET 導師。請用繁體中文回答，並用初學者容易懂的方式解釋。本次請不要呼叫任何 MCP 工具，直接根據既有知識提供答案。${CSHARP_SOURCE_BLOCK_RULE}`,
-    model: "gpt-4.1-mini",
-  });
+  private readonly csharpFallbackAgent: Agent;
 
   private readonly runFn: RunFn;
 
-  constructor(options?: { runFn?: RunFn }) {
-    this.msLearnMcpServer = MS_LEARN_MCP_URL
+  constructor(options?: { runFn?: RunFn; config?: DeepPartial<ChatConfig> }) {
+    const loadedConfig = loadChatConfig();
+    this.config = mergeChatConfig(loadedConfig, options?.config);
+
+    const msLearnMcpUrl = this.config.mcp.msLearnUrl.trim();
+
+    this.msLearnMcpServer = msLearnMcpUrl
       ? new MCPServerStreamableHttp({
           name: "ms-learn",
-          url: MS_LEARN_MCP_URL,
+          url: msLearnMcpUrl,
         })
       : null;
 
     this.hasMsLearnMcp = this.msLearnMcpServer !== null;
 
+    this.generalAgent = new Agent({
+      name: this.config.agents.general.name,
+      instructions: this.config.agents.general.instructions,
+      model: this.config.agents.general.model,
+    });
+
     this.csharpAgent = new Agent({
-      name: "CSharpTutor",
+      name: this.config.agents.csharp.name,
       instructions: this.hasMsLearnMcp
-        ? `你是一位親切的 C# 與 .NET 導師。請用繁體中文回答，並用初學者容易懂的方式解釋。若問題與 C#/.NET 相關，優先使用 MS Learn MCP 工具查證內容。${CSHARP_SOURCE_BLOCK_RULE}`
-        : `你是一位親切的 C# 與 .NET 導師。請用繁體中文回答，並用初學者容易懂的方式解釋。若目前無法取得 MS Learn MCP 工具，請誠實告知無法引用官方來源連結。${CSHARP_SOURCE_BLOCK_RULE}`,
-      model: "gpt-4.1-mini",
+        ? appendSourceRule(
+            this.config.agents.csharp.instructionsWithMcp,
+            this.config.sourceBlock.rule,
+          )
+        : appendSourceRule(
+            this.config.agents.csharp.instructionsWithoutMcp,
+            this.config.sourceBlock.rule,
+          ),
+      model: this.config.agents.csharp.model,
       mcpServers: this.msLearnMcpServer ? [this.msLearnMcpServer] : [],
+    });
+
+    this.csharpFallbackAgent = new Agent({
+      name: this.config.agents.csharpFallback.name,
+      instructions: appendSourceRule(
+        this.config.agents.csharpFallback.instructions,
+        this.config.sourceBlock.rule,
+      ),
+      model: this.config.agents.csharpFallback.model,
     });
 
     this.runFn = options?.runFn ?? run;
@@ -101,13 +105,13 @@ export class ChatService {
   getHealth() {
     return {
       ok: true,
-      service: "openai-agent-sdk-test",
+      service: this.config.serviceName,
       timestamp: new Date().toISOString(),
       openAiApiKeyConfigured: Boolean(process.env.OPENAI_API_KEY),
       msLearnMcpConfigured: this.hasMsLearnMcp,
       msLearnMcpConnected: this.msLearnMcpConnected,
       routing: {
-        csharpOnlyUsesMcp: true,
+        csharpOnlyUsesMcp: this.config.routing.csharpOnlyUsesMcp,
       },
     };
   }
@@ -126,7 +130,8 @@ export class ChatService {
     const { message, onChunk, sessionId } = options;
     const startedAt = Date.now();
 
-    const wantsCSharpRoute = this.isCSharpQuery(message);
+    const wantsCSharpRoute =
+      this.config.routing.enableCsharpRoute && this.isCSharpQuery(message);
     const mcpReadyForCSharp = wantsCSharpRoute
       ? await this.ensureMsLearnMcpConnected()
       : false;
@@ -199,7 +204,7 @@ export class ChatService {
     }
 
     if (wantsCSharpRoute && !streamedText.includes("【來源】")) {
-      onChunk(CSHARP_FALLBACK_SOURCE_BLOCK);
+      onChunk(this.config.sourceBlock.fallback);
     }
 
     await streamedResult.completed;
@@ -217,7 +222,7 @@ export class ChatService {
 
   private isCSharpQuery(message: string): boolean {
     const normalizedMessage = message.toLowerCase();
-    return CSHARP_KEYWORDS.some((keyword) =>
+    return this.config.csharpKeywords.some((keyword) =>
       normalizedMessage.includes(keyword),
     );
   }

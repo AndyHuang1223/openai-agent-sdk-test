@@ -27,6 +27,20 @@ MS_LEARN_MCP_URL=https://your-ms-learn-mcp-endpoint.example.com
 npm run dev
 ```
 
+執行測試（Vitest）：
+
+```bash
+npm test
+```
+
+依類型執行：
+
+```bash
+npm run test:integration
+npm run test:unit
+npm run test:e2e
+```
+
 開啟瀏覽器進入：
 
 ```text
@@ -48,10 +62,44 @@ curl http://localhost:3000/api/health
 
 ## 程式入口
 
-- `src/index.ts`：Node.js Web 伺服器與 `/api/chat` 串流端點
+- `src/index.ts`：Express 伺服器啟動入口
+- `src/app.ts`：Express app 組裝（middleware、API、靜態檔、錯誤處理）
+- `src/routes/api.ts`：`/api/health`、`/api/chat`、`/api/reset`
+- `src/services/chatService.ts`：Agent 路由判斷、MCP 連線與串流邏輯
 - `public/index.html`：聊天介面
 - `public/app.js`：前端送出訊息與接收串流
 - `public/styles.css`：頁面樣式
+
+## 測試目錄
+
+- `tests/integration`：API 與串流行為測試
+- `tests/unit`：單元測試（預留）
+- `tests/e2e`：端對端測試（預留）
+
+### 三層測試定位與撰寫準則
+
+- `unit`：測單一模組或函式，不啟動 HTTP server、不走真實網路 I/O
+- `integration`：測多模組協作（例如 `app + router + service`），可用 `supertest` 打 API
+- `e2e`：測接近真實使用流程，啟動實際 server 後以 HTTP 呼叫驗證端到端行為
+
+新增測試時，優先放在最小層級：
+
+- 只驗證純邏輯或狀態轉換 → 放 `tests/unit`
+- 驗證路由、middleware、回應格式、串流組裝 → 放 `tests/integration`
+- 驗證從 client 視角的整體流程與部署行為 → 放 `tests/e2e`
+
+建議原則：
+
+- 單元測試應該最快、數量最多
+- 整合測試聚焦 API contract 與模組邊界
+- e2e 保持精簡，僅涵蓋關鍵主流程（smoke path）
+
+### 命名慣例
+
+- 單元與整合測試：`*.test.ts`（例如 `chatService.test.ts`、`app.test.ts`）
+- 端對端測試：`*.e2e.test.ts`（例如 `health.e2e.test.ts`）
+- 檔名建議使用 `feature.behavior.test.ts`，方便從檔名辨識測試目的
+- 測試描述（`describe` / `it`）建議用行為句，例如「returns 400 when message is empty」
 
 可自行調整：
 
@@ -81,7 +129,7 @@ curl http://localhost:3000/api/health
 
 ### 對照重點
 
-- `src/index.ts` 中的 `previousResponseBySession`：`Map<string, string>`，儲存 `sessionId -> lastResponseId`
+- `src/services/chatService.ts` 中的 `previousResponseBySession`：`Map<string, string>`，儲存 `sessionId -> lastResponseId`
 - `POST /api/chat`：
   - 讀取 `sessionId`（若未提供則用 `default`）
   - 讀取 `previousResponseBySession.get(sessionId)` 並帶入 `run(..., { previousResponseId })`

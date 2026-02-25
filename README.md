@@ -258,6 +258,60 @@ curl http://localhost:3000/api/health
     - `【來源】`
     - `- 無（本次未使用 MS Learn MCP）`
 - 後端保險：若模型回覆缺少 `【來源】`，伺服器會在串流尾端自動補上「無來源」區塊
+
+## Docker 部署
+
+### 1) 準備環境變數
+
+```bash
+cp .env.example .env
+```
+
+至少要設定：
+
+```dotenv
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+> `/api/health` 也會檢查 `OPENAI_API_KEY`，未設定時會回傳 500。
+
+### 2) 使用 Docker Compose 啟動
+
+```bash
+docker compose up -d --build
+```
+
+查看狀態與日誌：
+
+```bash
+docker compose ps
+docker compose logs -f app
+```
+
+停止：
+
+```bash
+docker compose down
+```
+
+### 3) 驗證服務
+
+```bash
+curl -f http://localhost:3000/api/health
+curl -f http://localhost:3000/
+```
+
+### 4) 不用 Compose（單一容器）
+
+```bash
+docker build -t openai-agent-sdk-test:local .
+docker run --rm -p 3000:3000 --env-file .env openai-agent-sdk-test:local
+```
+
+### 備註
+
+- Docker 映像為 multi-stage build，runtime 只保留 `dist`、`public`、`config` 與 production 依賴。
+- 目前預設使用 `config/chat.json`，可透過 `CHAT_CONFIG_PATH` 切換到其他檔案（例如 `./config/chat.staging.json`）。
 - 容錯降級：若 MCP 不可用或 C# MCP agent 請求失敗，會自動改用不含 MCP 的 C# fallback agent；若 fallback 也失敗才改用一般 agent（不中斷 API）
 
 ## Session Memory 運作說明（對照程式碼）

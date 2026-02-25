@@ -1,0 +1,33 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: openai-agent-sdk-test:local
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      MS_LEARN_MCP_URL: ${MS_LEARN_MCP_URL:-https://learn.microsoft.com/api/mcp}
+      CHAT_CONFIG_PATH: ${CHAT_CONFIG_PATH:-./config/chat.json}
+      CHAT_SERVICE_NAME: ${CHAT_SERVICE_NAME:-openai-agent-sdk-test}
+      CHAT_MODEL_GENERAL: ${CHAT_MODEL_GENERAL:-gpt-4.1-mini}
+      CHAT_MODEL_CSHARP: ${CHAT_MODEL_CSHARP:-gpt-4.1-mini}
+      CHAT_MODEL_CSHARP_FALLBACK: ${CHAT_MODEL_CSHARP_FALLBACK:-gpt-4.1-mini}
+      CHAT_ROUTING_ENABLE_CSHARP_ROUTE: ${CHAT_ROUTING_ENABLE_CSHARP_ROUTE:-true}
+      CHAT_ROUTING_CSHARP_ONLY_USES_MCP: ${CHAT_ROUTING_CSHARP_ONLY_USES_MCP:-true}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then((res)=>{if(!res.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
